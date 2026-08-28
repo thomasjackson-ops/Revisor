@@ -87,12 +87,23 @@ def _sidebar_config() -> dict:
     with col2:
         escala_max = st.number_input("Máxima", value=7.0, step=0.5)
 
+    st.sidebar.divider()
+    st.sidebar.subheader("Documento de Salida")
+    incluir_observaciones = st.sidebar.checkbox(
+        "Incluir sección de Observaciones en blanco",
+        value=True,
+        help="Agrega un espacio en blanco (\"Observaciones:\") antes de la tabla, "
+        "para que cada ayudante escriba comentarios manuales. Es opcional: "
+        "cada ayudante decide si la incluye en sus propios documentos.",
+    )
+
     return {
         "provider": provider,
         "api_key": api_key,
         "model": model,
         "escala_min": escala_min,
         "escala_max": escala_max,
+        "incluir_observaciones": incluir_observaciones,
     }
 
 
@@ -227,7 +238,9 @@ def _process_multi_submission(
         escala_max=config["escala_max"],
     )
 
-    docx_buffer = generar_docx_feedback(evaluacion, etiqueta_archivos)
+    docx_buffer = generar_docx_feedback(
+        evaluacion, etiqueta_archivos, incluir_observaciones=config["incluir_observaciones"]
+    )
     nombre_archivo = estudiante.replace(",", "").replace(" ", "_")
     out_name = f"Feedback_{nombre_archivo}.docx"
     return evaluacion, docx_buffer.getvalue(), out_name
@@ -431,7 +444,9 @@ def _run_batch(uploaded_zip, rubrica_texto: str, config: dict) -> None:
                         escala_max=config["escala_max"],
                     )
 
-                    docx_buffer = generar_docx_feedback(evaluacion, archivo.name)
+                    docx_buffer = generar_docx_feedback(
+                        evaluacion, archivo.name, incluir_observaciones=config["incluir_observaciones"]
+                    )
                     out_name = feedback_filename(archivo.name)
                     out_zip.writestr(out_name, docx_buffer.getvalue())
 

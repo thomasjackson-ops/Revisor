@@ -9,7 +9,7 @@ from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 
 from core.evaluator import Evaluacion
 
@@ -30,8 +30,25 @@ def _shade_cell(cell, color_hex: str) -> None:
     shading.append(shd)
 
 
-def generar_docx_feedback(evaluacion: Evaluacion, original_filename: str) -> BytesIO:
-    """Genera un .docx en memoria con el feedback estructurado de una entrega."""
+def _set_column_widths(table, widths: list[Inches]) -> None:
+    """Fuerza el ancho de cada columna (python-docx requiere fijarlo celda por celda)."""
+    table.autofit = False
+    for row in table.rows:
+        for cell, width in zip(row.cells, widths):
+            cell.width = width
+
+
+def generar_docx_feedback(
+    evaluacion: Evaluacion,
+    original_filename: str,
+    incluir_observaciones: bool = True,
+) -> BytesIO:
+    """Genera un .docx en memoria con el feedback estructurado de una entrega.
+
+    `incluir_observaciones` controla si se agrega, antes de la tabla, una sección
+    "Observaciones" en blanco para que el ayudante escriba comentarios manuales
+    (es opcional: cada ayudante decide si la incluye o no).
+    """
     doc = Document()
 
     style = doc.styles["Normal"]
@@ -54,17 +71,22 @@ def generar_docx_feedback(evaluacion: Evaluacion, original_filename: str) -> Byt
 
     doc.add_paragraph()
 
-    doc.add_heading("Resumen General", level=1)
-    doc.add_paragraph(evaluacion.resumen_general)
+    if incluir_observaciones:
+        doc.add_heading("Observaciones", level=1)
+        obs = doc.add_paragraph()
+        obs.add_run("Observaciones: ")
+        # Espacio en blanco para que el ayudante escriba su comentario manual.
+        doc.add_paragraph()
+        doc.add_paragraph()
 
     doc.add_heading("Evaluación por Criterio", level=1)
 
-    table = doc.add_table(rows=1, cols=4)
+    table = doc.add_table(rows=1, cols=3)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.style = "Light Grid Accent 1"
 
     header_cells = table.rows[0].cells
-    headers = ["Criterio", "Puntaje", "Completitud", "Feedback"]
+    headers = ["Criterio", "Puntaje / Completitud", "Feedback"]
     for cell, text in zip(header_cells, headers):
         cell.text = ""
         run = cell.paragraphs[0].add_run(text)
@@ -77,15 +99,18 @@ def generar_docx_feedback(evaluacion: Evaluacion, original_filename: str) -> Byt
 
         row_cells[0].text = criterio.nombre_criterio
 
-        row_cells[1].text = f"{criterio.puntaje_obtenido:g} / {criterio.puntaje_maximo:g}"
-
-        completitud_run = row_cells[2].paragraphs[0].add_run(criterio.grado_completitud)
+        puntaje_parrafo = row_cells[1].paragraphs[0]
+        puntaje_parrafo.add_run(f"{criterio.puntaje_obtenido:g} / {criterio.puntaje_maximo:g}")
+        completitud_parrafo = row_cells[1].add_paragraph()
+        completitud_run = completitud_parrafo.add_run(criterio.grado_completitud)
         completitud_run.bold = True
         completitud_run.font.color.rgb = _COMPLETITUD_COLORS.get(
             criterio.grado_completitud, _COLOR_MUTED
         )
 
-        row_cells[3].text = criterio.feedback
+        row_cells[2].text = criterio.feedback
+
+    _set_column_widths(table, [Inches(1.4), Inches(1.3), Inches(3.8)])
 
     doc.add_paragraph()
 
